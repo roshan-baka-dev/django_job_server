@@ -1,0 +1,29 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Django ---
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+
+# --- Pipenv ---
+# We usually commit Pipfile and Pipfile.lock, but ignore the virtual env itself
+.venv/
+.virtualenvs/
+
+# --- VS Code / Cursor ---
+.vscode/
+*.code-workspace
+
+# --- Environment Variables (Security Risk!) ---
+.env
+.env.local
+
+# --- OS Generated Files ---
+.DS_Store
+Thumbs.db
