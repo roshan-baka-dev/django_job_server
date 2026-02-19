@@ -27,3 +27,8 @@ staticfiles/
 # --- OS Generated Files ---
 .DS_Store
 Thumbs.db
+
+# --- Celery ---
+celerybeat-schedule
+celerybeat-schedule-shm
+celerybeat-schedule-wal

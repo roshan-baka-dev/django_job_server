@@ -9,6 +9,11 @@ djangorestframework = "*"
 celery = "*"
 redis = "*"
 eventlet = "*"
+requests = "*"
+channels-redis = "*"
+channels = "*"
+daphne = "*"
+croniter = "*"
 
 [dev-packages]
 
