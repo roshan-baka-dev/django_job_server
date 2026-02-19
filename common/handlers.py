@@ -1,5 +1,5 @@
 from django.utils import timezone
-from common.models import AppUser, Job, ScheduleType
+from common.models import AppUser, Job, ScheduleType, JobStatus
 from common.scheduling import (
     schedule_immediate,
     schedule_run_at,

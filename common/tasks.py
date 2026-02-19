@@ -121,6 +121,9 @@ def run_job(self, job_id):
                 "idempotency_key": external_idempotency_key,
                 "payload": payload,
             }
+            if job.schedule_type == ScheduleType.POLLING:
+                body["job_id"] = str(job.id)
+                body["polling_state"] = job.polling_state or {}
             resp = requests.post(
                 callback_url,
                 json=body,
@@ -129,46 +132,75 @@ def run_job(self, job_id):
             )
             resp.raise_for_status()
         else:
-            pass  # Execute post-execution logic directly in Django (placeholder)
+            resp = None  # no response to parse
 
-        job.status = JobStatus.COMPLETED
-        job.save(update_fields=["status", "updated_at"])
-        
-        #Use get_or_create for Completion Log
-        completion_key = f"{job_id}::completed::{attempt_number}"
-        JobLog.objects.get_or_create(
-            idempotency_key=completion_key,
-            defaults={
-                "job": job,
-                "event_type": "execution_completed",
-                "attempt_number": attempt_number,
-            }
-        )
-        
-        publish_job_update(
-            str(job.id),
-            status=job.status,
-            log={
-                "event_type": "execution_completed",
-                "metadata": None,
-                "created_at": timezone.now().isoformat(),
-            },
-        )
+        # Stateful polling: parse response, update polling_state, reschedule only if not done
+        if job.schedule_type == ScheduleType.POLLING and job.polling_interval and callback_url and resp is not None:
+            try:
+                result_data = resp.json()
+            except Exception:
+                result_data = {}
+            new_state = result_data.get("polling_state")
+            if new_state is not None:
+                job.polling_state = new_state
+            done = result_data.get("done") is True
 
-        # Polling Logic
-        if job.schedule_type == ScheduleType.POLLING and job.polling_interval:
-            job.status = JobStatus.QUEUED
+            if done:
+                job.status = JobStatus.COMPLETED
+                job.save(update_fields=["status", "polling_state", "updated_at"])
+                completion_key = f"{job_id}::completed::{attempt_number}"
+                JobLog.objects.get_or_create(
+                    idempotency_key=completion_key,
+                    defaults={
+                        "job": job,
+                        "event_type": "execution_completed",
+                        "attempt_number": attempt_number,
+                    }
+                )
+                publish_job_update(
+                    str(job.id),
+                    status=job.status,
+                    log={
+                        "event_type": "execution_completed",
+                        "metadata": None,
+                        "created_at": timezone.now().isoformat(),
+                    },
+                )
+            else:
+                job.status = JobStatus.QUEUED
+                job.save(update_fields=["status", "polling_state", "updated_at"])
+                publish_job_update(str(job.id), status=job.status, log=None)
+                run_job.apply_async(
+                    args=[str(job.id)],
+                    countdown=job.polling_interval,
+                )
+        else:
+            # Non-polling (or no callback): mark completed and handle cron
+            job.status = JobStatus.COMPLETED
             job.save(update_fields=["status", "updated_at"])
-            publish_job_update(str(job.id), status=job.status, log=None)
-            run_job.apply_async(
-                args=[str(job.id)],
-                countdown=job.polling_interval,
+            completion_key = f"{job_id}::completed::{attempt_number}"
+            JobLog.objects.get_or_create(
+                idempotency_key=completion_key,
+                defaults={
+                    "job": job,
+                    "event_type": "execution_completed",
+                    "attempt_number": attempt_number,
+                }
             )
-        # Recurring cron: leave job QUEUED so Beat's enqueue_due_cron_jobs picks it up again next run
-        elif job.schedule_type == ScheduleType.CRON:
-            job.status = JobStatus.QUEUED
-            job.save(update_fields=["status", "updated_at"])
-            publish_job_update(str(job.id), status=job.status, log=None)
+            publish_job_update(
+                str(job.id),
+                status=job.status,
+                log={
+                    "event_type": "execution_completed",
+                    "metadata": None,
+                    "created_at": timezone.now().isoformat(),
+                },
+            )
+
+            if job.schedule_type == ScheduleType.CRON:
+                job.status = JobStatus.QUEUED
+                job.save(update_fields=["status", "updated_at"])
+                publish_job_update(str(job.id), status=job.status, log=None)
 
     except requests.RequestException as e:
         _handle_callback_failure(
