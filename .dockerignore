@@ -1,0 +1,12 @@
+.git
+.gitignore
+.vscode
+__pycache__/
+*.py[cod]
+*.sqlite3
+.env
+.venv/
+.virtualenvs/
+celerybeat-schedule
+celerybeat-schedule-shm
+celerybeat-schedule-wal

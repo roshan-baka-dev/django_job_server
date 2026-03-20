@@ -16,11 +16,17 @@ class JobCreateView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         data = serializer.validated_data
+
         try:
             handler = get_handler(data["app_name"], data["task_type"])
         except ValueError as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        job_id = handler(data)
+
+        try:
+            job_id = handler(data)
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
         return Response({"id": job_id}, status=status.HTTP_201_CREATED)
 
 
@@ -34,7 +40,6 @@ class JobStatusView(APIView):
             .order_by("-created_at")[:20]
             .values("event_type", "attempt_number", "error_type", "metadata", "created_at")
         )
-        from django.utils.dateformat import format as date_format
         created_at = job.created_at.isoformat() if job.created_at else None
         scheduled_at = job.scheduled_at.isoformat() if job.scheduled_at else None
         return Response({
